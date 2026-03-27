@@ -14,10 +14,17 @@ function App() {
   const [auth, setAuth] = useState(false);
   const [pay, setPay] = useState(false);
   const [err, setErr] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   /** initialize the session on page load */
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL}`, { credentials: "include" });
+    fetch(`${import.meta.env.VITE_API_URL}`, { credentials: "include" })
+      .then((res) => res.json())
+      .then((json) => {
+        setAuth(json.isAuthenticated);
+        setQuote(json.quote);
+        setLoading(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -25,7 +32,7 @@ function App() {
     fetch(`${import.meta.env.VITE_API_URL}/create-checkout-session`, {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json","x-brand-id":"agua" },
       body: JSON.stringify({
         customer_email: "ashutosh.18k92@outlook.com",
         quoteId: quote.id,
@@ -37,10 +44,19 @@ function App() {
       .catch(setErr);
   }, [auth, pay]);
 
+  if (loading) {
+    return <p>Loading...</p>;
+  }
+
   return (
     <>
       {err && <p>Error: {err}</p>}
-      {!auth && <PhoneAuth onAuth={() => setAuth(true)} onError={setErr} />}
+      {!auth && (
+        <PhoneAuth
+          onAuth={() => setAuth(true)}
+          onError={setErr}
+        />
+      )}
       {auth && (
         <QuotePanel
           quote={quote}
@@ -52,7 +68,10 @@ function App() {
         />
       )}
       {auth && clientSecret && (
-        <CheckoutProvider stripe={stripe} options={{ clientSecret }}>
+        <CheckoutProvider
+          stripe={stripe}
+          options={{ clientSecret }}
+        >
           <CheckoutForm />
         </CheckoutProvider>
       )}

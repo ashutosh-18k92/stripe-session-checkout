@@ -25,17 +25,15 @@ const crypto = require("crypto");
 app.post(
   "/create-checkout-session",
   async (req, res, next) => {
-    console.log(req.body);
-    const { quoteId, customer_email, return_url } = req.body;
-
-    const quote = db.prepare("SELECT * FROM quote WHERE id = ?").get(quoteId);
-    const amount = quote?.amount || 0;
-    req.amount = amount;
+    const { customer_email, return_url } = req.body;
     req.return_url = return_url;
     next();
   },
   /** Payment service */
   async (req, res) => {
+    const sessionId = req.cookies?.my_session_id;
+    const my_session = sessions.get(sessionId);
+    const quoteAmount = my_session.quote.amount;
     const line_items = [
       {
         price_data: {
@@ -43,14 +41,14 @@ app.post(
           product_data: {
             name: "Travel Insurance Policy",
           },
-          unit_amount: req.amount * 100,
+          unit_amount: quoteAmount * 100, //pence
         },
         quantity: 1,
       },
     ];
     const session = await stripe.checkout.sessions.create({
       line_items,
-      customer_email: "rishab@gmail.com",
+      customer_email: phoneBook.get(my_session.phoneNumber),
       mode: "payment",
       ui_mode: "custom",
       return_url: req.return_url,
@@ -81,15 +79,17 @@ app.get("/", (req, res) => {
     //simulate - if session doesn't exist or expired
     const sessionId = crypto.randomUUID();
     console.log("new session created", sessionId);
-    sessions.set(sessionId, { isAuthenticated: false, phoneNumber: undefined });
+    const initialState = { isAuthenticated: false, phoneNumber: undefined, quote: {} };
+    sessions.set(sessionId, initialState);
     res.cookie("my_session_id", sessionId, {
       path: "/",
       maxAge: 900000, // Expires in 15 minutes (in milliseconds)
       httpOnly: true, // Prevents client-side JS access (security)
     });
-    res.send("Cookie has been set!");
+    res.send({ ...initialState });
   } else {
-    res.send("Cookie already been set!");
+    const session = sessions.get(sessionId);
+    res.send({ ...session });
   }
 });
 
@@ -114,8 +114,11 @@ app.get(
     }
   },
   (req, res) => {
+    // Save the quote to session as well
+    const sessionId = req.cookies?.my_session_id;
+    const session = sessions.get(sessionId);
     const quote = generateRandomQuote();
-    console.log(quote);
+    sessions.set(sessionId, Object.assign({}, session, { quote }));
     res.send(quote);
   },
 );
